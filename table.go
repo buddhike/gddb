@@ -359,14 +359,40 @@ func DeleteByKey[T any, K any](ctx context.Context, t *Table[T], key K) error {
 		return fmt.Errorf("marshal key to av failed: %w", err)
 	}
 
-	input := dynamodb.DeleteItemInput{
+	input := &dynamodb.DeleteItemInput{
 		TableName: &t.tableName,
 		Key: map[string]types.AttributeValue{
 			t.hashAttribute: kav,
 		},
 	}
 
-	_, err = t.client.DeleteItem(ctx, &input)
+	return delete(ctx, t, input)
+}
+
+func DeleteByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK) error {
+	pkav, err := attributevalue.Marshal(pk)
+	if err != nil {
+		return fmt.Errorf("marshal key to av failed: %w", err)
+	}
+
+	skav, err := attributevalue.Marshal(sk)
+	if err != nil {
+		return fmt.Errorf("marshal key to av failed: %w", err)
+	}
+
+	input := &dynamodb.DeleteItemInput{
+		TableName: &t.tableName,
+		Key: map[string]types.AttributeValue{
+			t.hashAttribute: pkav,
+			t.sortAttribute: skav,
+		},
+	}
+
+	return delete(ctx, t, input)
+}
+
+func delete[T any](ctx context.Context, t *Table[T], input *dynamodb.DeleteItemInput) error {
+	_, err := t.client.DeleteItem(ctx, input)
 	if err != nil {
 		return fmt.Errorf("ddb delete item failed: %w", err)
 	}
