@@ -15,10 +15,10 @@ import (
 
 func TestEndToEnd(t *testing.T) {
 	type Item struct {
-		ID           string  `dynamodbav:"id,omitempty"`
+		ID           string  `dynamodbav:"id,omitempty" gddb:"hash"`
 		Name         string  `dynamodbav:"name,omitempty"`
 		Price        float32 `dynamodbav:"price,omitempty"`
-		FencingToken int     `dynamodbav:"fencingToken"`
+		FencingToken int     `dynamodbav:"fencingToken" gddb:"fence"`
 	}
 
 	ctx := context.Background()
@@ -50,9 +50,9 @@ func TestEndToEnd(t *testing.T) {
 		}
 	}
 
-	table := NewTable[string, Item]("items", "id", "fencingToken", client)
+	table := NewTable[Item]("items", client)
 	{
-		err = table.DeleteByKey(ctx, "item-1")
+		err = DeleteByKey(ctx, table, "item-1")
 		assert.NoError(t, err)
 	}
 
@@ -63,13 +63,12 @@ func TestEndToEnd(t *testing.T) {
 			Price: 10.30,
 		}
 
-		err := table.InsertUnique(ctx, item)
-
+		err := InsertUnique(ctx, table, item)
 		assert.NoError(t, err)
 	}
 
 	{
-		item, err := table.FindByKey(ctx, "item-1")
+		item, err := FindByKey(ctx, table, "item-1")
 
 		assert.NoError(t, err)
 		assert.Equal(t, "item-1", item.ID)
@@ -83,13 +82,12 @@ func TestEndToEnd(t *testing.T) {
 			Price: 11.50,
 		}
 
-		err := table.UpdateByKey(ctx, "item-1", item)
-
+		err := UpdateByKey(ctx, table, "item-1", item)
 		assert.NoError(t, err)
 	}
 
 	{
-		item, err := table.FindByKey(ctx, "item-1")
+		item, err := FindByKey(ctx, table, "item-1")
 
 		assert.NoError(t, err)
 
@@ -99,20 +97,17 @@ func TestEndToEnd(t *testing.T) {
 	}
 
 	{
-		a, _ := table.FindByKey(ctx, "item-1")
-		b, _ := table.FindByKey(ctx, "item-1")
+		a, _ := FindByKey(ctx, table, "item-1")
+		b, _ := FindByKey(ctx, table, "item-1")
 
 		a.Price = 15
-
-		l, err := table.UpdateByKeyOrGetLatest(ctx, "item-1", a)
+		l, err := UpdateByKeyOrGetLatest(ctx, table, "item-1", a)
 
 		assert.NoError(t, err)
-
 		assert.Equal(t, float32(15), l.Price)
 
 		b.Price = 20
-
-		l, err = table.UpdateByKeyOrGetLatest(ctx, "item-1", b)
+		l, err = UpdateByKeyOrGetLatest(ctx, table, "item-1", b)
 
 		assert.NoError(t, err)
 
