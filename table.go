@@ -28,6 +28,9 @@ type Table[T any] struct {
 	client         *dynamodb.Client
 }
 
+// NewTable returns a [Table] for the given DynamoDB table name and client.
+// Hash, sort, and fence attribute names are inferred from T's struct fields using
+// the gddb struct tag ("hash", "sort", "fence") together with dynamodbav names.
 func NewTable[T any](tableName string, client *dynamodb.Client) *Table[T] {
 	t := reflect.TypeFor[T]()
 	hash, sort, fence := discoverAttributes(t)
@@ -64,6 +67,8 @@ func discoverAttributes(t reflect.Type) (string, string, string) {
 	return hash, sort, fence
 }
 
+// InsertUnique writes item with a condition that the primary key does not already exist.
+// It fails if an item with the same hash key (and sort key, when the table has one) is present.
 func InsertUnique[T any](ctx context.Context, t *Table[T], item T) error {
 	m, err := attributevalue.MarshalMap(item)
 	if err != nil {
@@ -95,12 +100,15 @@ func InsertUnique[T any](ctx context.Context, t *Table[T], item T) error {
 	return nil
 }
 
+// IsErrConditionalCheckFailed reports whether err is or wraps a DynamoDB
+// [types.ConditionalCheckFailedException] (a conditional write failed).
 func IsErrConditionalCheckFailed(err error) bool {
 	var ccfe *types.ConditionalCheckFailedException
 	ok := errors.As(err, &ccfe)
 	return ok
 }
 
+// FindByKey loads a single item by partition key. It returns [ErrItemNotFound] when no item exists.
 func FindByKey[T any, K any](ctx context.Context, t *Table[T], key K) (T, error) {
 	var v T
 	mk, err := attributevalue.Marshal(key)
@@ -118,6 +126,8 @@ func FindByKey[T any, K any](ctx context.Context, t *Table[T], key K) (T, error)
 	return ddbGetItem(ctx, t, getItemInput)
 }
 
+// FindByCompositeKey loads a single item by partition and sort key.
+// It returns [ErrItemNotFound] when no item exists.
 func FindByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK) (T, error) {
 	var v T
 	mpk, err := attributevalue.Marshal(pk)
@@ -159,6 +169,8 @@ func ddbGetItem[T any](ctx context.Context, t *Table[T], input *dynamodb.GetItem
 	return v, err
 }
 
+// Query runs a DynamoDB Query using expr for key condition, projection, and filter.
+// Results are unmarshaled into []T.
 func Query[T any](ctx context.Context, t *Table[T], expr expression.Expression) ([]T, error) {
 	input := dynamodb.QueryInput{
 		TableName:                 &t.tableName,
@@ -283,6 +295,8 @@ func flattenMapRecursive[T any](t *Table[T], parent string, src map[string]types
 	return dst
 }
 
+// UpdateByKey updates the item identified by the partition key, setting every attribute
+// from value except the hash key. Nested struct fields are flattened for the update expression.
 func UpdateByKey[T any, K any](ctx context.Context, t *Table[T], key K, value T) error {
 	pk, err := attributevalue.Marshal(key)
 	if err != nil {
@@ -292,6 +306,9 @@ func UpdateByKey[T any, K any](ctx context.Context, t *Table[T], key K, value T)
 	return err
 }
 
+// FencedUpdateByKey performs an optimistic-locking update using the fence attribute on T:
+// it increments the fence and applies the update only if the fence still matches the previous value.
+// On a conditional check failure, it returns the current item from the failed response and a nil error.
 func FencedUpdateByKey[T any, K any](ctx context.Context, t *Table[T], key K, value T) (T, error) {
 	var current T
 	pk, err := attributevalue.Marshal(key)
@@ -314,6 +331,8 @@ func FencedUpdateByKey[T any, K any](ctx context.Context, t *Table[T], key K, va
 	return value, nil
 }
 
+// UpdateByCompositeKey updates the item identified by partition and sort keys, setting every
+// attribute from value except the hash key. Nested struct fields are flattened for the update expression.
 func UpdateByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK, value T) error {
 	avpk, err := attributevalue.Marshal(pk)
 	if err != nil {
@@ -327,6 +346,7 @@ func UpdateByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T
 	return err
 }
 
+// FencedUpdateByCompositeKey is like [FencedUpdateByKey] but for tables with a composite primary key.
 func FencedUpdateByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK, value T) (T, error) {
 	var current T
 	avpk, err := attributevalue.Marshal(pk)
@@ -353,6 +373,7 @@ func FencedUpdateByCompositeKey[T any, PK any, SK any](ctx context.Context, t *T
 	return value, nil
 }
 
+// DeleteByKey deletes the item with the given partition key.
 func DeleteByKey[T any, K any](ctx context.Context, t *Table[T], key K) error {
 	kav, err := attributevalue.Marshal(key)
 	if err != nil {
@@ -369,6 +390,7 @@ func DeleteByKey[T any, K any](ctx context.Context, t *Table[T], key K) error {
 	return delete(ctx, t, input)
 }
 
+// DeleteByCompositeKey deletes the item with the given partition and sort keys.
 func DeleteByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK) error {
 	pkav, err := attributevalue.Marshal(pk)
 	if err != nil {
