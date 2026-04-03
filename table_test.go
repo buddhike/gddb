@@ -101,13 +101,13 @@ func TestEndToEnd(t *testing.T) {
 		b, _ := FindByKey(ctx, table, "item-1")
 
 		a.Price = 15
-		l, err := UpdateByKeyOrGetLatest(ctx, table, "item-1", a)
+		l, err := FencedUpdateByKey(ctx, table, "item-1", a)
 
 		assert.NoError(t, err)
 		assert.Equal(t, float32(15), l.Price)
 
 		b.Price = 20
-		l, err = UpdateByKeyOrGetLatest(ctx, table, "item-1", b)
+		l, err = FencedUpdateByKey(ctx, table, "item-1", b)
 
 		assert.NoError(t, err)
 

@@ -115,7 +115,35 @@ func FindByKey[T any, K any](ctx context.Context, t *Table[T], key K) (T, error)
 		},
 	}
 
-	result, err := t.client.GetItem(ctx, getItemInput)
+	return ddbGetItem(ctx, t, getItemInput)
+}
+
+func FindByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK) (T, error) {
+	var v T
+	mpk, err := attributevalue.Marshal(pk)
+	if err != nil {
+		return v, fmt.Errorf("marshal pk to av failed: %w", err)
+	}
+
+	msk, err := attributevalue.Marshal(sk)
+	if err != nil {
+		return v, fmt.Errorf("marshal sk to av failed: %w", err)
+	}
+
+	getItemInput := &dynamodb.GetItemInput{
+		TableName: &t.tableName,
+		Key: map[string]types.AttributeValue{
+			t.hashAttribute: mpk,
+			t.sortAttribute: msk,
+		},
+	}
+
+	return ddbGetItem(ctx, t, getItemInput)
+}
+
+func ddbGetItem[T any](ctx context.Context, t *Table[T], input *dynamodb.GetItemInput) (T, error) {
+	var v T
+	result, err := t.client.GetItem(ctx, input)
 	if err != nil {
 		return v, fmt.Errorf("ddb get item failed: %w", err)
 	}
@@ -159,7 +187,7 @@ func Query[T any](ctx context.Context, t *Table[T], expr expression.Expression) 
 	return r, nil
 }
 
-func updateItem[T any, K any](ctx context.Context, t *Table[T], key K, value T, fenced bool) (*dynamodb.UpdateItemOutput, error) {
+func updateItem[T any](ctx context.Context, t *Table[T], pk types.AttributeValue, sk types.AttributeValue, value T, fenced bool) (*dynamodb.UpdateItemOutput, error) {
 	iav, err := attributevalue.MarshalMap(value)
 	if err != nil {
 		return nil, fmt.Errorf("marshal type T to av map failed: %w", err)
@@ -207,16 +235,16 @@ func updateItem[T any, K any](ctx context.Context, t *Table[T], key K, value T, 
 		return nil, fmt.Errorf("ddb expression build failed: %w", err)
 	}
 
-	kav, err := attributevalue.Marshal(key)
-	if err != nil {
-		return nil, fmt.Errorf("marshal key to av failed: %w", err)
+	key := map[string]types.AttributeValue{
+		t.hashAttribute: pk,
+	}
+	if sk != nil {
+		key[t.sortAttribute] = sk
 	}
 
 	input := &dynamodb.UpdateItemInput{
-		TableName: &t.tableName,
-		Key: map[string]types.AttributeValue{
-			t.hashAttribute: kav,
-		},
+		TableName:                           &t.tableName,
+		Key:                                 key,
 		UpdateExpression:                    expr.Update(),
 		ConditionExpression:                 expr.Condition(),
 		ExpressionAttributeNames:            expr.Names(),
@@ -256,13 +284,60 @@ func flattenMapRecursive[T any](t *Table[T], parent string, src map[string]types
 }
 
 func UpdateByKey[T any, K any](ctx context.Context, t *Table[T], key K, value T) error {
-	_, err := updateItem(ctx, t, key, value, false)
+	pk, err := attributevalue.Marshal(key)
+	if err != nil {
+		return fmt.Errorf("marshal key to av failed %w", err)
+	}
+	_, err = updateItem(ctx, t, pk, nil, value, false)
 	return err
 }
 
-func UpdateByKeyOrGetLatest[T any, K any](ctx context.Context, t *Table[T], key K, value T) (T, error) {
+func FencedUpdateByKey[T any, K any](ctx context.Context, t *Table[T], key K, value T) (T, error) {
 	var current T
-	_, err := updateItem(ctx, t, key, value, true)
+	pk, err := attributevalue.Marshal(key)
+	if err != nil {
+		return current, fmt.Errorf("marshal key to av failed %w", err)
+	}
+	_, err = updateItem(ctx, t, pk, nil, value, true)
+	if err != nil {
+		var ccf *types.ConditionalCheckFailedException
+		if errors.As(errors.Unwrap(err), &ccf) {
+			err = attributevalue.UnmarshalMap(ccf.Item, &current)
+			if err != nil {
+				return current, fmt.Errorf("umarshal current av map to type T failed: %w", err)
+			}
+			return current, nil
+		}
+
+		return current, fmt.Errorf("ddb update item: %w", err)
+	}
+	return value, nil
+}
+
+func UpdateByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK, value T) error {
+	avpk, err := attributevalue.Marshal(pk)
+	if err != nil {
+		return fmt.Errorf("marshal key to pk failed %w", err)
+	}
+	avsk, err := attributevalue.Marshal(sk)
+	if err != nil {
+		return fmt.Errorf("marshal key to sk failed %w", err)
+	}
+	_, err = updateItem(ctx, t, avpk, avsk, value, false)
+	return err
+}
+
+func FencedUpdateByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK, value T) (T, error) {
+	var current T
+	avpk, err := attributevalue.Marshal(pk)
+	if err != nil {
+		return current, fmt.Errorf("marshal key to pk failed %w", err)
+	}
+	avsk, err := attributevalue.Marshal(sk)
+	if err != nil {
+		return current, fmt.Errorf("marshal key to sk failed %w", err)
+	}
+	_, err = updateItem(ctx, t, avpk, avsk, value, true)
 	if err != nil {
 		var ccf *types.ConditionalCheckFailedException
 		if errors.As(errors.Unwrap(err), &ccf) {
