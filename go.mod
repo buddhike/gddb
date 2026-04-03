@@ -1,4 +1,4 @@
-module gddb
+module github.com/buddhike/gddb
 
 go 1.25.1
 
