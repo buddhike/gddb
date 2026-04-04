@@ -34,6 +34,10 @@ type Table[T any] struct {
 func NewTable[T any](tableName string, client *dynamodb.Client) *Table[T] {
 	t := reflect.TypeFor[T]()
 	hash, sort, fence := discoverAttributes(t)
+	if hash == "" {
+		panic("type must have a field with gddb:\"hash\" tag")
+	}
+
 	return &Table[T]{
 		tableName:      tableName,
 		hashAttribute:  hash,
