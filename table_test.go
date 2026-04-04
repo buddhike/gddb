@@ -141,7 +141,7 @@ func ensureTable(t *testing.T, client *dynamodb.Client, name string, pk, sk stri
 	}
 
 	if sk != "" {
-		input.AttributeDefinitions = append(input.AttributeDefinitions, types.AttributeDefinition{AttributeName: aws.String(pk), AttributeType: types.ScalarAttributeTypeS})
+		input.AttributeDefinitions = append(input.AttributeDefinitions, types.AttributeDefinition{AttributeName: aws.String(sk), AttributeType: types.ScalarAttributeTypeS})
 		input.KeySchema = append(input.KeySchema, types.KeySchemaElement{AttributeName: aws.String(sk), KeyType: types.KeyTypeRange})
 	}
 
@@ -162,4 +162,31 @@ func getDDBClient(t *testing.T) *dynamodb.Client {
 	})
 
 	return client
+}
+
+func TestCompositeKey(t *testing.T) {
+	ctx := t.Context()
+	client := getDDBClient(t)
+	ensureTable(t, client, "TestCompositeKey", "pk", "sk")
+
+	type item struct {
+		PK    string `dynamodbav:"pk" gddb:"hash"`
+		SK    string `dynamodbav:"sk" gddb:"sort"`
+		Value string `dynamodbav:"value"`
+	}
+
+	tbl := NewTable[item]("TestCompositeKey", client)
+	ia := item{PK: "a", SK: "b", Value: "alice"}
+	err := Insert(ctx, tbl, ia)
+	assert.NoError(t, err)
+
+	ib, err := FindByCompositeKey(ctx, tbl, "a", "b")
+	assert.NoError(t, err)
+	assert.Equal(t, ia, ib)
+
+	_, err = FindByCompositeKey(ctx, tbl, "a", "c")
+	assert.ErrorIs(t, err, ErrItemNotFound)
+
+	_, err = FindByCompositeKey(ctx, tbl, "c", "b")
+	assert.ErrorIs(t, err, ErrItemNotFound)
 }
