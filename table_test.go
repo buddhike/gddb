@@ -132,16 +132,19 @@ func ensureTable(t *testing.T, client *dynamodb.Client, name string, pk, sk stri
 	input := &dynamodb.CreateTableInput{
 		TableName: aws.String(name),
 		AttributeDefinitions: []types.AttributeDefinition{
-			{AttributeName: aws.String("id"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String(pk), AttributeType: types.ScalarAttributeTypeS},
 		},
 		KeySchema: []types.KeySchemaElement{
-			{AttributeName: aws.String("id"), KeyType: types.KeyTypeHash},
+			{AttributeName: aws.String(pk), KeyType: types.KeyTypeHash},
 		},
 		BillingMode: types.BillingModePayPerRequest,
 	}
+
 	if sk != "" {
+		input.AttributeDefinitions = append(input.AttributeDefinitions, types.AttributeDefinition{AttributeName: aws.String(pk), AttributeType: types.ScalarAttributeTypeS})
 		input.KeySchema = append(input.KeySchema, types.KeySchemaElement{AttributeName: aws.String(sk), KeyType: types.KeyTypeRange})
 	}
+
 	_, err = client.CreateTable(t.Context(), input)
 	require.NoError(t, err)
 }
