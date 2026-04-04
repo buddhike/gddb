@@ -27,7 +27,7 @@ func TestEndToEnd(t *testing.T) {
 	table := NewTable[Item]("TestEndToEnd", client)
 
 	{
-		err := DeleteByKey(ctx, table, "item-1")
+		err := DeleteItemByKey(ctx, table, "item-1")
 		assert.NoError(t, err)
 	}
 
@@ -38,12 +38,12 @@ func TestEndToEnd(t *testing.T) {
 			Price: 10.30,
 		}
 
-		err := Insert(ctx, table, item)
+		err := PutItem(ctx, table, item)
 		assert.NoError(t, err)
 	}
 
 	{
-		item, err := FindByKey(ctx, table, "item-1")
+		item, err := GetItemByKey(ctx, table, "item-1")
 
 		assert.NoError(t, err)
 		assert.Equal(t, "item-1", item.ID)
@@ -57,12 +57,12 @@ func TestEndToEnd(t *testing.T) {
 			Price: 11.50,
 		}
 
-		err := UpdateByKey(ctx, table, "item-1", item)
+		err := UpdateItemByKey(ctx, table, "item-1", item)
 		assert.NoError(t, err)
 	}
 
 	{
-		item, err := FindByKey(ctx, table, "item-1")
+		item, err := GetItemByKey(ctx, table, "item-1")
 
 		assert.NoError(t, err)
 
@@ -72,17 +72,17 @@ func TestEndToEnd(t *testing.T) {
 	}
 
 	{
-		a, _ := FindByKey(ctx, table, "item-1")
-		b, _ := FindByKey(ctx, table, "item-1")
+		a, _ := GetItemByKey(ctx, table, "item-1")
+		b, _ := GetItemByKey(ctx, table, "item-1")
 
 		a.Price = 15
-		l, err := FencedUpdateByKey(ctx, table, "item-1", a)
+		l, err := FencedUpdateItemByKey(ctx, table, "item-1", a)
 
 		assert.NoError(t, err)
 		assert.Equal(t, float32(15), l.Price)
 
 		b.Price = 20
-		l, err = FencedUpdateByKey(ctx, table, "item-1", b)
+		l, err = FencedUpdateItemByKey(ctx, table, "item-1", b)
 
 		assert.NoError(t, err)
 
@@ -115,10 +115,10 @@ func TestNestedTypes(t *testing.T) {
 	work := address{Street: "1 George Street", Suburb: "Sydney", State: "NSW", Postcode: 2000}
 	p := person{ID: "alice@corp.com", Name: "Alice", Home: home, Work: &work}
 
-	err := Insert(ctx, tbl, p)
+	err := PutItem(ctx, tbl, p)
 	assert.NoError(t, err)
 
-	pa, err := FindByKey(ctx, tbl, "alice@corp.com")
+	pa, err := GetItemByKey(ctx, tbl, "alice@corp.com")
 	assert.NoError(t, err)
 	assert.Equal(t, p, pa)
 }
@@ -177,16 +177,16 @@ func TestCompositeKey(t *testing.T) {
 
 	tbl := NewTable[item]("TestCompositeKey", client)
 	ia := item{PK: "a", SK: "b", Value: "alice"}
-	err := Insert(ctx, tbl, ia)
+	err := PutItem(ctx, tbl, ia)
 	assert.NoError(t, err)
 
-	ib, err := FindByCompositeKey(ctx, tbl, "a", "b")
+	ib, err := GetItemByCompositeKey(ctx, tbl, "a", "b")
 	assert.NoError(t, err)
 	assert.Equal(t, ia, ib)
 
-	_, err = FindByCompositeKey(ctx, tbl, "a", "c")
+	_, err = GetItemByCompositeKey(ctx, tbl, "a", "c")
 	assert.ErrorIs(t, err, ErrItemNotFound)
 
-	_, err = FindByCompositeKey(ctx, tbl, "c", "b")
+	_, err = GetItemByCompositeKey(ctx, tbl, "c", "b")
 	assert.ErrorIs(t, err, ErrItemNotFound)
 }

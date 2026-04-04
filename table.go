@@ -71,9 +71,9 @@ func discoverAttributes(t reflect.Type) (string, string, string) {
 	return hash, sort, fence
 }
 
-// Insert writes item with a condition that the primary key does not already exist.
+// PutItem writes item with a condition that the primary key does not already exist.
 // It fails if an item with the same hash key (and sort key, when the table has one) is present.
-func Insert[T any](ctx context.Context, t *Table[T], item T) error {
+func PutItem[T any](ctx context.Context, t *Table[T], item T) error {
 	m, err := attributevalue.MarshalMap(item)
 	if err != nil {
 		return fmt.Errorf("marshal item to av failed: %w", err)
@@ -104,8 +104,8 @@ func Insert[T any](ctx context.Context, t *Table[T], item T) error {
 	return nil
 }
 
-// FindByKey loads a single item by partition key. It returns [ErrItemNotFound] when no item exists.
-func FindByKey[T any, K any](ctx context.Context, t *Table[T], key K) (T, error) {
+// GetItemByKey loads a single item by partition key. It returns [ErrItemNotFound] when no item exists.
+func GetItemByKey[T any, K any](ctx context.Context, t *Table[T], key K) (T, error) {
 	var v T
 	mk, err := attributevalue.Marshal(key)
 	if err != nil {
@@ -122,9 +122,9 @@ func FindByKey[T any, K any](ctx context.Context, t *Table[T], key K) (T, error)
 	return ddbGetItem(ctx, t, getItemInput)
 }
 
-// FindByCompositeKey loads a single item by partition and sort key.
+// GetItemByCompositeKey loads a single item by partition and sort key.
 // It returns [ErrItemNotFound] when no item exists.
-func FindByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK) (T, error) {
+func GetItemByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK) (T, error) {
 	var v T
 	mpk, err := attributevalue.Marshal(pk)
 	if err != nil {
@@ -291,9 +291,9 @@ func flattenMapRecursive[T any](t *Table[T], parent string, src map[string]types
 	return dst
 }
 
-// UpdateByKey updates the item identified by the partition key, setting every attribute
+// UpdateItemByKey updates the item identified by the partition key, setting every attribute
 // from value except the hash key. Nested struct fields are flattened for the update expression.
-func UpdateByKey[T any, K any](ctx context.Context, t *Table[T], key K, value T) error {
+func UpdateItemByKey[T any, K any](ctx context.Context, t *Table[T], key K, value T) error {
 	pk, err := attributevalue.Marshal(key)
 	if err != nil {
 		return fmt.Errorf("marshal key to av failed %w", err)
@@ -302,10 +302,10 @@ func UpdateByKey[T any, K any](ctx context.Context, t *Table[T], key K, value T)
 	return err
 }
 
-// FencedUpdateByKey performs an optimistic-locking update using the fence attribute on T:
+// FencedUpdateItemByKey performs an optimistic-locking update using the fence attribute on T:
 // it increments the fence and applies the update only if the fence still matches the previous value.
 // On a conditional check failure, it returns the current item from the failed response and a nil error.
-func FencedUpdateByKey[T any, K any](ctx context.Context, t *Table[T], key K, value T) (T, error) {
+func FencedUpdateItemByKey[T any, K any](ctx context.Context, t *Table[T], key K, value T) (T, error) {
 	var current T
 	pk, err := attributevalue.Marshal(key)
 	if err != nil {
@@ -327,9 +327,9 @@ func FencedUpdateByKey[T any, K any](ctx context.Context, t *Table[T], key K, va
 	return value, nil
 }
 
-// UpdateByCompositeKey updates the item identified by partition and sort keys, setting every
+// UpdateItemByCompositeKey updates the item identified by partition and sort keys, setting every
 // attribute from value except the hash key. Nested struct fields are flattened for the update expression.
-func UpdateByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK, value T) error {
+func UpdateItemByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK, value T) error {
 	avpk, err := attributevalue.Marshal(pk)
 	if err != nil {
 		return fmt.Errorf("marshal key to pk failed %w", err)
@@ -342,8 +342,8 @@ func UpdateByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T
 	return err
 }
 
-// FencedUpdateByCompositeKey is like [FencedUpdateByKey] but for tables with a composite primary key.
-func FencedUpdateByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK, value T) (T, error) {
+// FencedUpdateItemByCompositeKey is like [FencedUpdateItemByKey] but for tables with a composite primary key.
+func FencedUpdateItemByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK, value T) (T, error) {
 	var current T
 	avpk, err := attributevalue.Marshal(pk)
 	if err != nil {
@@ -369,8 +369,8 @@ func FencedUpdateByCompositeKey[T any, PK any, SK any](ctx context.Context, t *T
 	return value, nil
 }
 
-// DeleteByKey deletes the item with the given partition key.
-func DeleteByKey[T any, K any](ctx context.Context, t *Table[T], key K) error {
+// DeleteItemByKey deletes the item with the given partition key.
+func DeleteItemByKey[T any, K any](ctx context.Context, t *Table[T], key K) error {
 	kav, err := attributevalue.Marshal(key)
 	if err != nil {
 		return fmt.Errorf("marshal key to av failed: %w", err)
@@ -386,8 +386,8 @@ func DeleteByKey[T any, K any](ctx context.Context, t *Table[T], key K) error {
 	return delete(ctx, t, input)
 }
 
-// DeleteByCompositeKey deletes the item with the given partition and sort keys.
-func DeleteByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK) error {
+// DeleteItemByCompositeKey deletes the item with the given partition and sort keys.
+func DeleteItemByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK) error {
 	pkav, err := attributevalue.Marshal(pk)
 	if err != nil {
 		return fmt.Errorf("marshal key to av failed: %w", err)
