@@ -67,9 +67,9 @@ func discoverAttributes(t reflect.Type) (string, string, string) {
 	return hash, sort, fence
 }
 
-// InsertUnique writes item with a condition that the primary key does not already exist.
+// Insert writes item with a condition that the primary key does not already exist.
 // It fails if an item with the same hash key (and sort key, when the table has one) is present.
-func InsertUnique[T any](ctx context.Context, t *Table[T], item T) error {
+func Insert[T any](ctx context.Context, t *Table[T], item T) error {
 	m, err := attributevalue.MarshalMap(item)
 	if err != nil {
 		return fmt.Errorf("marshal item to av failed: %w", err)
@@ -98,14 +98,6 @@ func InsertUnique[T any](ctx context.Context, t *Table[T], item T) error {
 	}
 
 	return nil
-}
-
-// IsErrConditionalCheckFailed reports whether err is or wraps a DynamoDB
-// [types.ConditionalCheckFailedException] (a conditional write failed).
-func IsErrConditionalCheckFailed(err error) bool {
-	var ccfe *types.ConditionalCheckFailedException
-	ok := errors.As(err, &ccfe)
-	return ok
 }
 
 // FindByKey loads a single item by partition key. It returns [ErrItemNotFound] when no item exists.
@@ -419,4 +411,28 @@ func delete[T any](ctx context.Context, t *Table[T], input *dynamodb.DeleteItemI
 		return fmt.Errorf("ddb delete item failed: %w", err)
 	}
 	return nil
+}
+
+// IsErrConditionalCheckFailed reports whether err is or wraps a DynamoDB
+// [types.ConditionalCheckFailedException] (a conditional write failed).
+func IsErrConditionalCheckFailed(err error) bool {
+	var ccfe *types.ConditionalCheckFailedException
+	ok := errors.As(err, &ccfe)
+	return ok
+}
+
+// IsErrResourceInUse reports whether err is or wraps a DynamoDB
+// [types.ResourceInUseException], indicating that the resource (e.g., table)
+// is currently in use (such as during creation or deletion).
+func IsErrResourceInUse(err error) bool {
+	var inUse *types.ResourceInUseException
+	return errors.As(err, &inUse)
+}
+
+// IsErrResourceNotFound reports whether err is or wraps a DynamoDB
+// [types.ResourceNotFoundException], indicating that the resource (e.g., table)
+// does not exist.
+func IsErrResourceNotFound(err error) bool {
+	var notfound *types.ResourceNotFoundException
+	return errors.As(err, &notfound)
 }
