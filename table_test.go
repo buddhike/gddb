@@ -76,18 +76,20 @@ func TestEndToEnd(t *testing.T) {
 		b, _ := GetItemByKey(ctx, table, "item-1")
 
 		a.Price = 15
-		l, err := FencedUpdateItemByKey(ctx, table, "item-1", a)
+		l, err := FencedUpdateItemByKey(ctx, table, "item-1", &a)
 
 		assert.NoError(t, err)
 		assert.Equal(t, float32(15), l.Price)
+		assert.Same(t, &a, l)
 
 		b.Price = 20
-		l, err = FencedUpdateItemByKey(ctx, table, "item-1", b)
+		l, err = FencedUpdateItemByKey(ctx, table, "item-1", &b)
 
 		assert.NoError(t, err)
 
 		assert.Equal(t, 1, l.FencingToken)
 		assert.Equal(t, float32(15), l.Price)
+		assert.NotSame(t, l, &b)
 	}
 }
 

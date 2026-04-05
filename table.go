@@ -241,7 +241,7 @@ func Query[T any](ctx context.Context, t *Table[T], expr expression.Expression) 
 	return r, nil
 }
 
-func updateItem[T any](ctx context.Context, t *Table[T], pk types.AttributeValue, sk types.AttributeValue, value T, fenced bool) (*dynamodb.UpdateItemOutput, error) {
+func updateItem[T any](ctx context.Context, t *Table[T], pk types.AttributeValue, sk types.AttributeValue, value *T, fenced bool) (*dynamodb.UpdateItemOutput, error) {
 	iav, err := attributevalue.MarshalMap(value)
 	if err != nil {
 		return nil, fmt.Errorf("marshal type T to av map failed: %w", err)
@@ -344,18 +344,22 @@ func UpdateItemByKey[T any, K any](ctx context.Context, t *Table[T], key K, valu
 	if err != nil {
 		return fmt.Errorf("marshal key to av failed %w", err)
 	}
-	_, err = updateItem(ctx, t, pk, nil, value, false)
+	_, err = updateItem(ctx, t, pk, nil, &value, false)
 	return err
 }
 
 // FencedUpdateItemByKey performs an optimistic-locking update using the fence attribute on T:
 // it increments the fence and applies the update only if the fence still matches the previous value.
 // On a conditional check failure, it returns the current item from the failed response and a nil error.
-func FencedUpdateItemByKey[T any, K any](ctx context.Context, t *Table[T], key K, value T) (T, error) {
+//
+// To determine if the update was successful, compare the input pointer to the returned output pointer:
+// if they are the same, the update was successful; if not, the update failed and the output points to the
+// current item in the database.
+func FencedUpdateItemByKey[T any, K any](ctx context.Context, t *Table[T], key K, value *T) (*T, error) {
 	var current T
 	pk, err := attributevalue.Marshal(key)
 	if err != nil {
-		return current, fmt.Errorf("marshal key to av failed %w", err)
+		return nil, fmt.Errorf("marshal key to av failed %w", err)
 	}
 	_, err = updateItem(ctx, t, pk, nil, value, true)
 	if err != nil {
@@ -363,12 +367,12 @@ func FencedUpdateItemByKey[T any, K any](ctx context.Context, t *Table[T], key K
 		if errors.As(errors.Unwrap(err), &ccf) {
 			err = attributevalue.UnmarshalMap(ccf.Item, &current)
 			if err != nil {
-				return current, fmt.Errorf("umarshal current av map to type T failed: %w", err)
+				return nil, fmt.Errorf("umarshal current av map to type T failed: %w", err)
 			}
-			return current, nil
+			return &current, nil
 		}
 
-		return current, fmt.Errorf("ddb update item: %w", err)
+		return nil, fmt.Errorf("ddb update item: %w", err)
 	}
 	return value, nil
 }
@@ -384,20 +388,20 @@ func UpdateItemByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Tab
 	if err != nil {
 		return fmt.Errorf("marshal key to sk failed %w", err)
 	}
-	_, err = updateItem(ctx, t, avpk, avsk, value, false)
+	_, err = updateItem(ctx, t, avpk, avsk, &value, false)
 	return err
 }
 
 // FencedUpdateItemByCompositeKey is like [FencedUpdateItemByKey] but for tables with a composite primary key.
-func FencedUpdateItemByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK, value T) (T, error) {
+func FencedUpdateItemByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK, value *T) (*T, error) {
 	var current T
 	avpk, err := attributevalue.Marshal(pk)
 	if err != nil {
-		return current, fmt.Errorf("marshal key to pk failed %w", err)
+		return nil, fmt.Errorf("marshal key to pk failed %w", err)
 	}
 	avsk, err := attributevalue.Marshal(sk)
 	if err != nil {
-		return current, fmt.Errorf("marshal key to sk failed %w", err)
+		return nil, fmt.Errorf("marshal key to sk failed %w", err)
 	}
 	_, err = updateItem(ctx, t, avpk, avsk, value, true)
 	if err != nil {
@@ -405,12 +409,12 @@ func FencedUpdateItemByCompositeKey[T any, PK any, SK any](ctx context.Context, 
 		if errors.As(errors.Unwrap(err), &ccf) {
 			err = attributevalue.UnmarshalMap(ccf.Item, &current)
 			if err != nil {
-				return current, fmt.Errorf("umarshal current av map to type T failed: %w", err)
+				return nil, fmt.Errorf("umarshal current av map to type T failed: %w", err)
 			}
-			return current, nil
+			return &current, nil
 		}
 
-		return current, fmt.Errorf("ddb update item: %w", err)
+		return nil, fmt.Errorf("ddb update item: %w", err)
 	}
 	return value, nil
 }
