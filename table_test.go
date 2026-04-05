@@ -125,6 +125,37 @@ func TestNestedTypes(t *testing.T) {
 	assert.Equal(t, p, pa)
 }
 
+func TestPutItemOverwrite(t *testing.T) {
+	ctx := t.Context()
+	client := getDDBClient(t)
+	ensureTable(t, client, "TestPutItemOverwrite", "id", "")
+
+	type Item struct {
+		ID    string  `dynamodbav:"id,omitempty" gddb:"hash"`
+		Name  string  `dynamodbav:"name,omitempty"`
+		Price float32 `dynamodbav:"price,omitempty"`
+	}
+
+	tbl := NewTable[Item]("TestPutItemOverwrite", client)
+
+	require.NoError(t, PutItem(ctx, tbl, Item{ID: "x", Name: "first", Price: 1}))
+	got, err := GetItemByKey(ctx, tbl, "x")
+	require.NoError(t, err)
+	assert.Equal(t, "first", got.Name)
+	assert.Equal(t, float32(1), got.Price)
+
+	require.NoError(t, PutItemOverwrite(ctx, tbl, Item{ID: "x", Name: "second", Price: 2}))
+	got, err = GetItemByKey(ctx, tbl, "x")
+	require.NoError(t, err)
+	assert.Equal(t, "second", got.Name)
+	assert.Equal(t, float32(2), got.Price)
+
+	require.NoError(t, PutItemOverwrite(ctx, tbl, Item{ID: "y", Name: "only"}))
+	got, err = GetItemByKey(ctx, tbl, "y")
+	require.NoError(t, err)
+	assert.Equal(t, "only", got.Name)
+}
+
 func ensureTable(t *testing.T, client *dynamodb.Client, name string, pk, sk string) {
 	_, err := client.DeleteTable(t.Context(), &dynamodb.DeleteTableInput{TableName: aws.String(name)})
 	if err != nil && !IsErrResourceNotFound(err) {

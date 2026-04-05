@@ -104,6 +104,25 @@ func PutItem[T any](ctx context.Context, t *Table[T], item T) error {
 	return nil
 }
 
+// PutItemOverwrite writes item with PutItem and no condition expression.
+// If an item with the same primary key already exists, it is fully replaced by item.
+func PutItemOverwrite[T any](ctx context.Context, t *Table[T], item T) error {
+	m, err := attributevalue.MarshalMap(item)
+	if err != nil {
+		return fmt.Errorf("marshal item to av failed: %w", err)
+	}
+
+	_, err = t.client.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: &t.tableName,
+		Item:      m,
+	})
+	if err != nil {
+		return fmt.Errorf("ddb put item failed: %w", err)
+	}
+
+	return nil
+}
+
 // PutOrGetItem attempts to insert the given item into the table, enforcing uniqueness on the primary key:
 // if no item with the same key exists, the item is written and returned. If an item with the same key
 // already exists, it is returned instead, and no write occurs. To determine whether the write actually took place,
