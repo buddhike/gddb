@@ -190,3 +190,25 @@ func TestCompositeKey(t *testing.T) {
 	_, err = GetItemByCompositeKey(ctx, tbl, "c", "b")
 	assert.ErrorIs(t, err, ErrItemNotFound)
 }
+
+func TestPutOrGetItem(t *testing.T) {
+	ctx := t.Context()
+	tablename := "TestPutOrGetItem"
+	client := getDDBClient(t)
+	ensureTable(t, client, tablename, "pk", "")
+
+	type item struct {
+		PK    string `dynamodbav:"pk" gddb:"hash"`
+		Value string `dynamodbav:"value"`
+	}
+
+	tbl := NewTable[item](tablename, client)
+	ia := item{"a", "b"}
+	ib, err := PutOrGetItem(ctx, tbl, &ia)
+	assert.NoError(t, err)
+	assert.Same(t, &ia, ib)
+
+	ic, err := PutOrGetItem(ctx, tbl, &ia)
+	assert.NoError(t, err)
+	assert.NotSame(t, &ia, &ic)
+}

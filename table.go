@@ -104,6 +104,52 @@ func PutItem[T any](ctx context.Context, t *Table[T], item T) error {
 	return nil
 }
 
+// PutOrGetItem attempts to insert the given item into the table, enforcing uniqueness on the primary key:
+// if no item with the same key exists, the item is written and returned. If an item with the same key
+// already exists, it is returned instead, and no write occurs. To determine whether the write actually took place,
+// compare the returned pointer with the input pointer: if they are the same, the write was performed;
+// if they differ, the item already existed and was loaded. On error, a non-nil error is returned.
+func PutOrGetItem[T any](ctx context.Context, t *Table[T], item *T) (*T, error) {
+	var v T
+	m, err := attributevalue.MarshalMap(item)
+	if err != nil {
+		return nil, fmt.Errorf("marshal item to av failed: %w", err)
+	}
+
+	cond := expression.AttributeNotExists(expression.Name(t.hashAttribute))
+	if t.sortAttribute != "" {
+		cond = cond.And(expression.AttributeNotExists(expression.Name(t.sortAttribute)))
+	}
+	unique, err := expression.NewBuilder().WithCondition(cond).Build()
+	if err != nil {
+		return nil, fmt.Errorf("ddb build expression failed: %w", err)
+	}
+
+	pii := dynamodb.PutItemInput{
+		TableName:                           &t.tableName,
+		Item:                                m,
+		ConditionExpression:                 unique.Condition(),
+		ExpressionAttributeNames:            unique.Names(),
+		ExpressionAttributeValues:           unique.Values(),
+		ReturnValuesOnConditionCheckFailure: types.ReturnValuesOnConditionCheckFailureAllOld,
+	}
+
+	_, err = t.client.PutItem(ctx, &pii)
+	if err != nil {
+		var ccf *types.ConditionalCheckFailedException
+		if errors.As(err, &ccf) {
+			err = attributevalue.UnmarshalMap(ccf.Item, &v)
+			if err != nil {
+				return nil, fmt.Errorf("unmarshal current value failed: %w", err)
+			}
+			return &v, nil
+		}
+		return nil, fmt.Errorf("ddb put item failed: %w", err)
+	}
+
+	return item, nil
+}
+
 // GetItemByKey loads a single item by partition key. It returns [ErrItemNotFound] when no item exists.
 func GetItemByKey[T any, K any](ctx context.Context, t *Table[T], key K) (T, error) {
 	var v T
