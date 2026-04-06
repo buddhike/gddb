@@ -73,7 +73,7 @@ func discoverAttributes(t reflect.Type) (string, string, string) {
 
 // PutItem writes item with a condition that the primary key does not already exist.
 // It fails if an item with the same hash key (and sort key, when the table has one) is present.
-func PutItem[T any](ctx context.Context, t *Table[T], item T) error {
+func (t *Table[T]) PutItem(ctx context.Context, item T) error {
 	m, err := attributevalue.MarshalMap(item)
 	if err != nil {
 		return fmt.Errorf("marshal item to av failed: %w", err)
@@ -106,7 +106,7 @@ func PutItem[T any](ctx context.Context, t *Table[T], item T) error {
 
 // PutItemOverwrite writes item with PutItem and no condition expression.
 // If an item with the same primary key already exists, it is fully replaced by item.
-func PutItemOverwrite[T any](ctx context.Context, t *Table[T], item T) error {
+func (t *Table[T]) PutItemOverwrite(ctx context.Context, item T) error {
 	m, err := attributevalue.MarshalMap(item)
 	if err != nil {
 		return fmt.Errorf("marshal item to av failed: %w", err)
@@ -128,7 +128,7 @@ func PutItemOverwrite[T any](ctx context.Context, t *Table[T], item T) error {
 // already exists, it is returned instead, and no write occurs. To determine whether the write actually took place,
 // compare the returned pointer with the input pointer: if they are the same, the write was performed;
 // if they differ, the item already existed and was loaded. On error, a non-nil error is returned.
-func PutOrGetItem[T any](ctx context.Context, t *Table[T], item *T) (*T, error) {
+func (t *Table[T]) PutOrGetItem(ctx context.Context, item *T) (*T, error) {
 	var v T
 	m, err := attributevalue.MarshalMap(item)
 	if err != nil {
@@ -170,7 +170,7 @@ func PutOrGetItem[T any](ctx context.Context, t *Table[T], item *T) (*T, error) 
 }
 
 // GetItemByKey loads a single item by partition key. It returns [ErrItemNotFound] when no item exists.
-func GetItemByKey[T any, K any](ctx context.Context, t *Table[T], key K) (T, error) {
+func (t *Table[T]) GetItemByKey(ctx context.Context, key any) (T, error) {
 	var v T
 	mk, err := attributevalue.Marshal(key)
 	if err != nil {
@@ -189,7 +189,7 @@ func GetItemByKey[T any, K any](ctx context.Context, t *Table[T], key K) (T, err
 
 // GetItemByCompositeKey loads a single item by partition and sort key.
 // It returns [ErrItemNotFound] when no item exists.
-func GetItemByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK) (T, error) {
+func (t *Table[T]) GetItemByCompositeKey(ctx context.Context, pk any, sk any) (T, error) {
 	var v T
 	mpk, err := attributevalue.Marshal(pk)
 	if err != nil {
@@ -232,7 +232,7 @@ func ddbGetItem[T any](ctx context.Context, t *Table[T], input *dynamodb.GetItem
 
 // Query runs a DynamoDB Query using expr for key condition, projection, and filter.
 // Results are unmarshaled into []T.
-func Query[T any](ctx context.Context, t *Table[T], expr expression.Expression) ([]T, error) {
+func (t *Table[T]) Query(ctx context.Context, expr expression.Expression) ([]T, error) {
 	input := dynamodb.QueryInput{
 		TableName:                 &t.tableName,
 		KeyConditionExpression:    expr.KeyCondition(),
@@ -358,7 +358,7 @@ func flattenMapRecursive[T any](t *Table[T], parent string, src map[string]types
 
 // UpdateItem modifies the item identified by the key specification in type T, updating all attributes from the provided value except the hash key.
 // Nested fields in the struct are flattened into dot-separated attribute paths for the DynamoDB update expression.
-func UpdateItem[T any](ctx context.Context, t *Table[T], value T) error {
+func (t *Table[T]) UpdateItem(ctx context.Context, value T) error {
 	_, err := updateItem(ctx, t, &value, false)
 	return err
 }
@@ -372,7 +372,7 @@ func UpdateItem[T any](ctx context.Context, t *Table[T], value T) error {
 // - If they differ, the update did not take place and the returned value is the current item from the database.
 //
 // Fields are matched using the hash (and sort) key as specified in the struct tags.
-func FencedUpdateItem[T any](ctx context.Context, t *Table[T], value *T) (*T, error) {
+func (t *Table[T]) FencedUpdateItem(ctx context.Context, value *T) (*T, error) {
 	var current T
 	_, err := updateItem(ctx, t, value, true)
 	if err != nil {
@@ -391,7 +391,7 @@ func FencedUpdateItem[T any](ctx context.Context, t *Table[T], value *T) (*T, er
 }
 
 // DeleteItemByKey deletes the item with the given partition key.
-func DeleteItemByKey[T any, K any](ctx context.Context, t *Table[T], key K) error {
+func (t *Table[T]) DeleteItemByKey(ctx context.Context, key any) error {
 	kav, err := attributevalue.Marshal(key)
 	if err != nil {
 		return fmt.Errorf("marshal key to av failed: %w", err)
@@ -408,7 +408,7 @@ func DeleteItemByKey[T any, K any](ctx context.Context, t *Table[T], key K) erro
 }
 
 // DeleteItemByCompositeKey deletes the item with the given partition and sort keys.
-func DeleteItemByCompositeKey[T any, PK any, SK any](ctx context.Context, t *Table[T], pk PK, sk SK) error {
+func (t *Table[T]) DeleteItemByCompositeKey(ctx context.Context, pk any, sk any) error {
 	pkav, err := attributevalue.Marshal(pk)
 	if err != nil {
 		return fmt.Errorf("marshal key to av failed: %w", err)

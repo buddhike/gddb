@@ -27,7 +27,7 @@ func TestEndToEnd(t *testing.T) {
 	table := NewTable[Item]("TestEndToEnd", client)
 
 	{
-		err := DeleteItemByKey(ctx, table, "item-1")
+		err := table.DeleteItemByKey(ctx, "item-1")
 		assert.NoError(t, err)
 	}
 
@@ -38,12 +38,12 @@ func TestEndToEnd(t *testing.T) {
 			Price: 10.30,
 		}
 
-		err := PutItem(ctx, table, item)
+		err := table.PutItem(ctx, item)
 		assert.NoError(t, err)
 	}
 
 	{
-		item, err := GetItemByKey(ctx, table, "item-1")
+		item, err := table.GetItemByKey(ctx, "item-1")
 
 		assert.NoError(t, err)
 		assert.Equal(t, "item-1", item.ID)
@@ -57,12 +57,12 @@ func TestEndToEnd(t *testing.T) {
 			Price: 11.50,
 		}
 
-		err := UpdateItem(ctx, table, item)
+		err := table.UpdateItem(ctx, item)
 		assert.NoError(t, err)
 	}
 
 	{
-		item, err := GetItemByKey(ctx, table, "item-1")
+		item, err := table.GetItemByKey(ctx, "item-1")
 
 		assert.NoError(t, err)
 
@@ -72,19 +72,18 @@ func TestEndToEnd(t *testing.T) {
 	}
 
 	{
-		a, _ := GetItemByKey(ctx, table, "item-1")
-		b, _ := GetItemByKey(ctx, table, "item-1")
+		a, _ := table.GetItemByKey(ctx, "item-1")
+		b, _ := table.GetItemByKey(ctx, "item-1")
 
 		a.Price = 15
-		l, err := FencedUpdateItem(ctx, table, &a)
+		l, err := table.FencedUpdateItem(ctx, &a)
 
 		assert.NoError(t, err)
 		assert.Equal(t, float32(15), l.Price)
 		assert.Same(t, &a, l)
 
 		b.Price = 20
-		l, err = FencedUpdateItem(ctx, table, &b)
-
+		l, err = table.FencedUpdateItem(ctx, &b)
 		assert.NoError(t, err)
 
 		assert.Equal(t, 1, l.FencingToken)
@@ -117,10 +116,10 @@ func TestNestedTypes(t *testing.T) {
 	work := address{Street: "1 George Street", Suburb: "Sydney", State: "NSW", Postcode: 2000}
 	p := person{ID: "alice@corp.com", Name: "Alice", Home: home, Work: &work}
 
-	err := PutItem(ctx, tbl, p)
+	err := tbl.PutItem(ctx, p)
 	assert.NoError(t, err)
 
-	pa, err := GetItemByKey(ctx, tbl, "alice@corp.com")
+	pa, err := tbl.GetItemByKey(ctx, "alice@corp.com")
 	assert.NoError(t, err)
 	assert.Equal(t, p, pa)
 }
@@ -138,20 +137,20 @@ func TestPutItemOverwrite(t *testing.T) {
 
 	tbl := NewTable[Item]("TestPutItemOverwrite", client)
 
-	require.NoError(t, PutItem(ctx, tbl, Item{ID: "x", Name: "first", Price: 1}))
-	got, err := GetItemByKey(ctx, tbl, "x")
+	require.NoError(t, tbl.PutItem(ctx, Item{ID: "x", Name: "first", Price: 1}))
+	got, err := tbl.GetItemByKey(ctx, "x")
 	require.NoError(t, err)
 	assert.Equal(t, "first", got.Name)
 	assert.Equal(t, float32(1), got.Price)
 
-	require.NoError(t, PutItemOverwrite(ctx, tbl, Item{ID: "x", Name: "second", Price: 2}))
-	got, err = GetItemByKey(ctx, tbl, "x")
+	require.NoError(t, tbl.PutItemOverwrite(ctx, Item{ID: "x", Name: "second", Price: 2}))
+	got, err = tbl.GetItemByKey(ctx, "x")
 	require.NoError(t, err)
 	assert.Equal(t, "second", got.Name)
 	assert.Equal(t, float32(2), got.Price)
 
-	require.NoError(t, PutItemOverwrite(ctx, tbl, Item{ID: "y", Name: "only"}))
-	got, err = GetItemByKey(ctx, tbl, "y")
+	require.NoError(t, tbl.PutItemOverwrite(ctx, Item{ID: "y", Name: "only"}))
+	got, err = tbl.GetItemByKey(ctx, "y")
 	require.NoError(t, err)
 	assert.Equal(t, "only", got.Name)
 }
@@ -210,17 +209,17 @@ func TestCompositeKey(t *testing.T) {
 
 	tbl := NewTable[item]("TestCompositeKey", client)
 	ia := item{PK: "a", SK: "b", Value: "alice"}
-	err := PutItem(ctx, tbl, ia)
+	err := tbl.PutItem(ctx, ia)
 	assert.NoError(t, err)
 
-	ib, err := GetItemByCompositeKey(ctx, tbl, "a", "b")
+	ib, err := tbl.GetItemByCompositeKey(ctx, "a", "b")
 	assert.NoError(t, err)
 	assert.Equal(t, ia, ib)
 
-	_, err = GetItemByCompositeKey(ctx, tbl, "a", "c")
+	_, err = tbl.GetItemByCompositeKey(ctx, "a", "c")
 	assert.ErrorIs(t, err, ErrItemNotFound)
 
-	_, err = GetItemByCompositeKey(ctx, tbl, "c", "b")
+	_, err = tbl.GetItemByCompositeKey(ctx, "c", "b")
 	assert.ErrorIs(t, err, ErrItemNotFound)
 }
 
@@ -237,11 +236,11 @@ func TestPutOrGetItem(t *testing.T) {
 
 	tbl := NewTable[item](tablename, client)
 	ia := item{"a", "b"}
-	ib, err := PutOrGetItem(ctx, tbl, &ia)
+	ib, err := tbl.PutOrGetItem(ctx, &ia)
 	assert.NoError(t, err)
 	assert.Same(t, &ia, ib)
 
-	ic, err := PutOrGetItem(ctx, tbl, &ia)
+	ic, err := tbl.PutOrGetItem(ctx, &ia)
 	assert.NoError(t, err)
 	assert.NotSame(t, &ia, &ic)
 }

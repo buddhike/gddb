@@ -83,7 +83,7 @@ _, err = client.PutItem(ctx, &dynamodb.PutItemInput{
 </td>
 <td valign="top">
 
-<pre lang="go"><code>err := gddb.PutItem(ctx, table, Item{ID: "a", Name: "foo"})
+<pre lang="go"><code>err := table.PutItem(ctx, Item{ID: "a", Name: "foo"})
 </code></pre>
 
 </td>
@@ -120,7 +120,7 @@ _, err = client.PutItem(ctx, &dynamodb.PutItemInput{
 </td>
 <td valign="top">
 
-<pre lang="go"><code>err := gddb.PutItemOverwrite(ctx, table,
+<pre lang="go"><code>err := table.PutItemOverwrite(ctx,
     Item{ID: "a", Name: "foo"})
 </code></pre>
 
@@ -167,7 +167,7 @@ if err := attributevalue.UnmarshalMap(out.Item, &item); err != nil {
 </td>
 <td valign="top">
 
-<pre lang="go"><code>item, err := gddb.GetItemByKey(ctx, table, "a")
+<pre lang="go"><code>item, err := table.GetItemByKey(ctx, "a")
 </code></pre>
 
 </td>
@@ -221,7 +221,7 @@ _, err = client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 </td>
 <td valign="top">
 
-<pre lang="go"><code>err := gddb.UpdateItem(ctx, table,
+<pre lang="go"><code>err := table.UpdateItem(ctx,
     Item{ID: "a", Name: "foo", Price: 9.99})
 </code></pre>
 
@@ -270,7 +270,7 @@ for i, m := range result.Items {
 </td>
 <td valign="top">
 
-<pre lang="go"><code>rows, err := gddb.Query(ctx, table, expr)
+<pre lang="go"><code>rows, err := table.Query(ctx, expr)
 </code></pre>
 
 </td>
@@ -282,19 +282,19 @@ for i, m := range result.Items {
 
 ## Operations
 
-All functions take a `context.Context` and a `*Table[T]`. For helpers that take a key by itself (`GetItemByKey`, `DeleteItemByKey`, etc.), key arguments are generic (`K`, `PK`, `SK`) and are marshaled with the AWS `attributevalue` package. For `UpdateItem` / `FencedUpdateItem`, the partition key (and sort key, if the table has one) must be set on the `value` struct so the library can build the DynamoDB key and the update expression.
+All operations are methods on `*Table[T]` and take a `context.Context` as the first argument. For helpers that take a key by itself (`GetItemByKey`, `DeleteItemByKey`, etc.), key arguments are generic (`any`) and are marshaled with the AWS `attributevalue` package. For `UpdateItem` / `FencedUpdateItem`, the partition key (and sort key, if the table has one) must be set on the `value` struct so the library can build the DynamoDB key and the update expression.
 
 | Function | Description |
 |----------|-------------|
-| `PutItem` | `PutItem` with a condition that the primary key does not exist yet. |
-| `PutItemOverwrite` | `PutItem` with no condition: creates or fully replaces the item for that primary key. |
-| `PutOrGetItem` | Tries to insert `*item`; if the key already exists, returns the stored row and does not write. Compare the returned pointer to the input pointer: same pointer means the write happened; different pointer means an existing item was loaded. |
-| `GetItemByKey` | `GetItem` by partition key. Returns `gddb.ErrItemNotFound` if missing. |
-| `GetItemByCompositeKey` | `GetItem` by partition + sort key. |
-| `Query` | Runs `Query` with a pre-built `expression.Expression` (key condition, projection, filter); results are unmarshaled into `[]T`. |
-| `UpdateItem` | `UpdateItem` with key derived from `value`: hash (and sort) fields on `value` define the item key; every other field is `SET` in the update. Nested structs are flattened into dotted paths. |
-| `FencedUpdateItem` | Optimistic lock: same key and `SET` behavior as `UpdateItem`, but increments the fence and adds a condition on the previous fence value. On conflict, the current item is unmarshaled and returned with a **nil** error. Pass `*value`; compare the returned pointer to the input—same means success, different means retry with the returned item. Requires a `gddb:"fence"` field. |
-| `DeleteItemByKey` / `DeleteItemByCompositeKey` | `DeleteItem` by key(s). |
+| `(*Table[T]).PutItem` | `PutItem` with a condition that the primary key does not exist yet. |
+| `(*Table[T]).PutItemOverwrite` | `PutItem` with no condition: creates or fully replaces the item for that primary key. |
+| `(*Table[T]).PutOrGetItem` | Tries to insert `*item`; if the key already exists, returns the stored row and does not write. Compare the returned pointer to the input pointer: same pointer means the write happened; different pointer means an existing item was loaded. |
+| `(*Table[T]).GetItemByKey` | `GetItem` by partition key. Returns `gddb.ErrItemNotFound` if missing. |
+| `(*Table[T]).GetItemByCompositeKey` | `GetItem` by partition + sort key. |
+| `(*Table[T]).Query` | Runs `Query` with a pre-built `expression.Expression` (key condition, projection, filter); results are unmarshaled into `[]T`. |
+| `(*Table[T]).UpdateItem` | `UpdateItem` with key derived from `value`: hash (and sort) fields on `value` define the item key; every other field is `SET` in the update. Nested structs are flattened into dotted paths. |
+| `(*Table[T]).FencedUpdateItem` | Optimistic lock: same key and `SET` behavior as `UpdateItem`, but increments the fence and adds a condition on the previous fence value. On conflict, the current item is unmarshaled and returned with a **nil** error. Pass `*value`; compare the returned pointer to the input—same means success, different means retry with the returned item. Requires a `gddb:"fence"` field. |
+| `(*Table[T]).DeleteItemByKey` / `(*Table[T]).DeleteItemByCompositeKey` | `DeleteItem` by key(s). |
 
 **Conditional writes:** Use `gddb.IsErrConditionalCheckFailed(err)` to detect `types.ConditionalCheckFailedException` (for example after `PutItem` when the key already exists). Unconditional puts (`PutItemOverwrite`) do not use a condition, so that error does not apply.
 
@@ -305,29 +305,29 @@ ctx := context.Background()
 table := gddb.NewTable[Item]("items", client)
 
 // Insert if absent
-if err := gddb.PutItem(ctx, table, Item{ID: "a", Name: "foo"}); err != nil {
+if err := table.PutItem(ctx, Item{ID: "a", Name: "foo"}); err != nil {
     if gddb.IsErrConditionalCheckFailed(err) {
         // already exists
     }
 }
 
 // Create or replace whole item (no attribute_not_exists check)
-_ = gddb.PutItemOverwrite(ctx, table, Item{ID: "a", Name: "bar", Price: 1})
+_ = table.PutItemOverwrite(ctx, Item{ID: "a", Name: "bar", Price: 1})
 
-item, err := gddb.GetItemByKey(ctx, table, "a")
+item, err := table.GetItemByKey(ctx, "a")
 if errors.Is(err, gddb.ErrItemNotFound) {
     // handle missing
 }
 
 // Partial update: key comes from value; other fields are SET (nested maps flattened)
-_ = gddb.UpdateItem(ctx, table, Item{ID: "a", Price: 9.99})
+_ = table.UpdateItem(ctx, Item{ID: "a", Price: 9.99})
 
 // Query: build with github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression
 key := expression.Key("id").Equal(expression.Value("a"))
 expr, _ := expression.NewBuilder().
     WithKeyCondition(key).
     Build()
-rows, err := gddb.Query(ctx, table, expr)
+rows, err := table.Query(ctx, expr)
 ```
 
 ## Local development and tests
