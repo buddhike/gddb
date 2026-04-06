@@ -57,7 +57,7 @@ func TestEndToEnd(t *testing.T) {
 			Price: 11.50,
 		}
 
-		err := UpdateItemByKey(ctx, table, "item-1", item)
+		err := UpdateItem(ctx, table, item)
 		assert.NoError(t, err)
 	}
 
@@ -76,14 +76,14 @@ func TestEndToEnd(t *testing.T) {
 		b, _ := GetItemByKey(ctx, table, "item-1")
 
 		a.Price = 15
-		l, err := FencedUpdateItemByKey(ctx, table, "item-1", &a)
+		l, err := FencedUpdateItem(ctx, table, &a)
 
 		assert.NoError(t, err)
 		assert.Equal(t, float32(15), l.Price)
 		assert.Same(t, &a, l)
 
 		b.Price = 20
-		l, err = FencedUpdateItemByKey(ctx, table, "item-1", &b)
+		l, err = FencedUpdateItem(ctx, table, &b)
 
 		assert.NoError(t, err)
 
