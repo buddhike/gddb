@@ -356,20 +356,22 @@ func flattenMapRecursive[T any](t *Table[T], parent string, src map[string]types
 	return dst
 }
 
-// UpdateItem updates the item identified by the partition key, setting every attribute
-// from value except the hash key. Nested struct fields are flattened for the update expression.
+// UpdateItem modifies the item identified by the key specification in type T, updating all attributes from the provided value except the hash key.
+// Nested fields in the struct are flattened into dot-separated attribute paths for the DynamoDB update expression.
 func UpdateItem[T any](ctx context.Context, t *Table[T], value T) error {
 	_, err := updateItem(ctx, t, &value, false)
 	return err
 }
 
-// FencedUpdateItem performs an optimistic-locking update using the fence attribute on T:
-// it increments the fence and applies the update only if the fence still matches the previous value.
-// On a conditional check failure, it returns the current item from the failed response and a nil error.
+// FencedUpdateItem performs an optimistic-locking update using the fence attribute defined on type T.
+// It increments the fence and applies the update only if the current item in the database still matches the previous fence value from the input.
+// If the conditional check fails (due to concurrent modification), it returns the current version of the item (from the failed response) and a nil error.
 //
-// To determine if the update was successful, compare the input pointer to the returned output pointer:
-// if they are the same, the update was successful; if not, the update failed and the output points to the
-// current item in the database.
+// To check if the update was successful, compare the input pointer with the returned pointer:
+// - If they are the same, the update succeeded.
+// - If they differ, the update did not take place and the returned value is the current item from the database.
+//
+// Fields are matched using the hash (and sort) key as specified in the struct tags.
 func FencedUpdateItem[T any](ctx context.Context, t *Table[T], value *T) (*T, error) {
 	var current T
 	_, err := updateItem(ctx, t, value, true)

@@ -39,7 +39,7 @@ table := gddb.NewTable[Item]("items", dynamoClient)
 
 ## Comparison with the AWS SDK
 
-gddb is a thin layer on top of the official v2 client: it still uses `attributevalue` and `expression` where DynamoDB requires them (for example `Query`). For the common **single-item** patterns, it collapses repeated boilerplate—table name, key attribute names, marshal/unmarshal, empty-item checks, and wiring expression outputs into `PutItem` / `GetItem` / `UpdateItem` inputs—into one typed call.
+gddb is a thin layer on top of the official v2 client: it still uses `attributevalue` and `expression` where DynamoDB requires them (for example `Query`). For the common **single-item** patterns, it collapses repeated boilerplate—table name, key attribute names, marshal/unmarshal, empty-item checks, and wiring expression outputs into `PutItem` / `GetItem` / `UpdateItem` inputs—into one typed call. **Updates** build the DynamoDB key from the hash (and sort) fields on the value you pass, so you do not pass the key as a separate argument.
 
 Assume `Item` and `table` are set up as above, `ctx` is a `context.Context`, and `client` is a `*dynamodb.Client`.
 
@@ -177,7 +177,7 @@ if err := attributevalue.UnmarshalMap(out.Item, &item); err != nil {
 
 ### UpdateItem (SET non-key fields from a struct)
 
-The SDK needs an `UpdateExpression` and separate marshaling per field; gddb marshals the value struct, flattens nested maps for dotted paths, and skips the hash key in the update expression.
+The SDK needs an `UpdateExpression`, a separate key map, and marshaling per field. gddb marshals a single `value` struct: it uses the hash (and sort, if any) attributes from that struct for the item key, sets every **other** attribute from the same struct, flattens nested maps into dotted paths, and omits the key attributes from the `SET` clause.
 
 <table>
 <thead>
@@ -221,7 +221,7 @@ _, err = client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 </td>
 <td valign="top">
 
-<pre lang="go"><code>err := gddb.UpdateItemByKey(ctx, table, "a",
+<pre lang="go"><code>err := gddb.UpdateItem(ctx, table,
     Item{ID: "a", Name: "foo", Price: 9.99})
 </code></pre>
 
@@ -229,6 +229,8 @@ _, err = client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 </tr>
 </tbody>
 </table>
+
+For a **composite primary key**, include both hash and sort fields on `value` (for example `Item{PK: "a", SK: "b", ...}`); `UpdateItem` and `FencedUpdateItem` use them for the DynamoDB key the same way.
 
 ### Query
 
@@ -276,11 +278,11 @@ for i, m := range result.Items {
 </tbody>
 </table>
 
-**Summary:** Where the SDK forces you to repeat table name, key names, AV maps, and expression fields, gddb encodes key metadata once on `NewTable` and keeps call sites short for put-if-absent, unconditional full-item puts (`PutItemOverwrite`), get-by-key, struct-shaped updates, deletes, and query result decoding.
+**Summary:** Where the SDK forces you to repeat table name, key names, AV maps, and expression fields, gddb encodes key metadata once on `NewTable` and keeps call sites short for put-if-absent, unconditional full-item puts (`PutItemOverwrite`), get-by-key, struct-shaped updates (key read from the value struct), deletes, and query result decoding.
 
 ## Operations
 
-All functions take a `context.Context` and a `*Table[T]`. Key arguments are generic (`K`, `PK`, `SK`) and are marshaled with the AWS attributevalue package, so you can pass simple scalars or types that marshal to the correct DynamoDB attribute shape.
+All functions take a `context.Context` and a `*Table[T]`. For helpers that take a key by itself (`GetItemByKey`, `DeleteItemByKey`, etc.), key arguments are generic (`K`, `PK`, `SK`) and are marshaled with the AWS `attributevalue` package. For `UpdateItem` / `FencedUpdateItem`, the partition key (and sort key, if the table has one) must be set on the `value` struct so the library can build the DynamoDB key and the update expression.
 
 | Function | Description |
 |----------|-------------|
@@ -290,8 +292,8 @@ All functions take a `context.Context` and a `*Table[T]`. Key arguments are gene
 | `GetItemByKey` | `GetItem` by partition key. Returns `gddb.ErrItemNotFound` if missing. |
 | `GetItemByCompositeKey` | `GetItem` by partition + sort key. |
 | `Query` | Runs `Query` with a pre-built `expression.Expression` (key condition, projection, filter); results are unmarshaled into `[]T`. |
-| `UpdateItemByKey` / `UpdateItemByCompositeKey` | `UpdateItem`: sets every attribute from the value struct **except** the hash key. Nested structs are flattened into dotted paths for the update expression. |
-| `FencedUpdateItemByKey` / `FencedUpdateItemByCompositeKey` | Optimistic lock: increments the fence and applies the update only if the fence still matches. On conflict, the current item is unmarshaled and returned with a **nil** error. Pass a `*T`; compare the returned pointer to the input pointer—same means the update succeeded, different means retry with the returned item. Requires a `gddb:"fence"` field. |
+| `UpdateItem` | `UpdateItem` with key derived from `value`: hash (and sort) fields on `value` define the item key; every other field is `SET` in the update. Nested structs are flattened into dotted paths. |
+| `FencedUpdateItem` | Optimistic lock: same key and `SET` behavior as `UpdateItem`, but increments the fence and adds a condition on the previous fence value. On conflict, the current item is unmarshaled and returned with a **nil** error. Pass `*value`; compare the returned pointer to the input—same means success, different means retry with the returned item. Requires a `gddb:"fence"` field. |
 | `DeleteItemByKey` / `DeleteItemByCompositeKey` | `DeleteItem` by key(s). |
 
 **Conditional writes:** Use `gddb.IsErrConditionalCheckFailed(err)` to detect `types.ConditionalCheckFailedException` (for example after `PutItem` when the key already exists). Unconditional puts (`PutItemOverwrite`) do not use a condition, so that error does not apply.
@@ -317,8 +319,8 @@ if errors.Is(err, gddb.ErrItemNotFound) {
     // handle missing
 }
 
-// Partial update: non-key fields from value are SET (nested maps flattened)
-_ = gddb.UpdateItemByKey(ctx, table, "a", Item{ID: "a", Price: 9.99})
+// Partial update: key comes from value; other fields are SET (nested maps flattened)
+_ = gddb.UpdateItem(ctx, table, Item{ID: "a", Price: 9.99})
 
 // Query: build with github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression
 key := expression.Key("id").Equal(expression.Value("a"))
